@@ -1,0 +1,44 @@
+{
+  "name": "agent-bounties",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "workers": "tsx --env-file=.env src/workers/runner.ts",
+    "workers:watch": "tsx watch --env-file=.env src/workers/runner.ts",
+    "indexer:run": "tsx --env-file=.env src/services/indexer/indexer.service.ts",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "type-check": "tsc --noEmit",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.3",
+    "@prisma/client": "^5.22.0",
+    "bullmq": "^5.17.0",
+    "cheerio": "^1.0.0",
+    "ioredis": "^5.4.1",
+    "next": "^15.0.4",
+    "openai": "^4.73.0",
+    "pino": "^9.5.0",
+    "pino-pretty": "^13.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "eslint": "^9.15.0",
+    "eslint-config-next": "^15.0.4",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

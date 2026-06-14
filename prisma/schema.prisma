@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+enum BountyStatus {
+  ACTIVE
+  EXPIRED
+  COMPLETED
+  REMOVED
+}
+
+enum TaskType {
+  RESEARCH
+  DATA_COLLECTION
+  WEB_VERIFICATION
+  SOCIAL_MEDIA
+  CODING
+  IMAGE_ANALYSIS
+  LOCAL_PHYSICAL
+  PHONE_CALL
+  IMPOSSIBLE
+}
+
+enum BidDecision {
+  ACCEPTED
+  REJECTED_LOW_EV
+  REJECTED_LOW_CONFIDENCE
+  REJECTED_IMPOSSIBLE
+  REJECTED_DUPLICATE
+}
+
+enum SubmissionStatus {
+  DRAFT
+  AUTO_REVIEW_PASS
+  AUTO_REVIEW_FAIL
+  SUBMITTED_TO_PLATFORM
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum AgentType {
+  RESEARCH
+  DATA
+  CODING
+  VERIFY
+  IMAGE
+}
+
+// ─── Core Models ─────────────────────────────────────────────
+
+model Bounty {
+  id             String      @id @default(cuid())
+  externalId     String      @unique
+  title          String
+  description    String      @db.Text
+  rewardUsd      Float
+  rewardSol      Float?
+  deadline       DateTime?
+  creatorAddress String?
+  creatorTwitter String?
+  url            String
+  rawData        Json?
+  status         BountyStatus @default(ACTIVE)
+  indexedAt      DateTime    @default(now())
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  classification Classification?
+  bids           Bid[]
+  submissions    Submission[]
+  events         Event[]
+
+  @@index([status])
+  @@index([indexedAt])
+  @@index([rewardUsd])
+}
+
+model Classification {
+  id           String    @id @default(cuid())
+  bountyId     String    @unique
+  bounty       Bounty    @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  taskType     TaskType
+  confidence   Float
+  reasoning    String    @db.Text
+  isAiDoable   Boolean
+  estimatedTimeMinutes Int?
+  requiredTools String[]
+  subTasks     Json?
+  rawResponse  Json?
+  createdAt    DateTime  @default(now())
+
+  bid Bid?
+
+  @@index([taskType])
+  @@index([isAiDoable])
+}
+
+model Bid {
+  id               String      @id @default(cuid())
+  bountyId         String
+  bounty           Bounty      @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  classificationId String      @unique
+  classification   Classification @relation(fields: [classificationId], references: [id])
+  agentType        AgentType
+  decision         BidDecision
+  expectedValue    Float
+  estimatedWinRate Float
+  computeCostEst   Float
+  riskPenalty      Float
+  confidenceScore  Float
+  reasoning        String      @db.Text
+  createdAt        DateTime    @default(now())
+
+  submission Submission?
+
+  @@index([decision])
+  @@index([bountyId])
+}
+
+model Submission {
+  id             String           @id @default(cuid())
+  bountyId       String
+  bounty         Bounty           @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+  bidId          String           @unique
+  bid            Bid              @relation(fields: [bidId], references: [id])
+  agentType      AgentType
+  content        String           @db.Text
+  summary        String           @db.Text
+  sources        Json
+  computeCostActual Float         @default(0)
+  autoScore      Float?
+  scoreBreakdown Json?
+  status         SubmissionStatus @default(DRAFT)
+  submittedAt    DateTime         @default(now())
+  reviewedAt     DateTime?
+  outcome        SubmissionStatus?
+  outcomeAt      DateTime?
+  payoutAmount   Float?
+  platformResponse Json?
+
+  @@index([status])
+  @@index([bountyId])
+  @@index([agentType])
+}
+
+model Agent {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  type        AgentType @unique
+  isActive    Boolean   @default(true)
+  stakeAmount Float     @default(0)
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  reputation  Reputation?
+}
+
+model Reputation {
+  id                String    @id @default(cuid())
+  agentId           String    @unique
+  agent             Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  totalBids         Int       @default(0)
+  totalSubmissions  Int       @default(0)
+  approved          Int       @default(0)
+  rejected          Int       @default(0)
+  expired           Int       @default(0)
+  totalEarnedUsd    Float     @default(0)
+  totalComputeCost  Float     @default(0)
+  accuracyScore     Float     @default(0)
+  rolling30dScore   Float     @default(0)
+  avgAutoScore      Float     @default(0)
+  categoryScores    Json      @default("{}")
+  updatedAt         DateTime  @updatedAt
+}
+
+model Event {
+  id           String   @id @default(cuid())
+  type         String
+  bountyId     String?
+  bounty       Bounty?  @relation(fields: [bountyId], references: [id])
+  submissionId String?
+  agentId      String?
+  severity     String   @default("INFO")
+  message      String
+  data         Json     @default("{}")
+  createdAt    DateTime @default(now())
+
+  @@index([type])
+  @@index([bountyId])
+  @@index([createdAt])
+  @@index([severity])
+}
+
+model SystemMetric {
+  id        String   @id @default(cuid())
+  name      String
+  value     Float
+  labels    Json     @default("{}")
+  recordedAt DateTime @default(now())
+
+  @@index([name])
+  @@index([recordedAt])
+}
