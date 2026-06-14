@@ -238,10 +238,5 @@ export interface MetricsSnapshot {
     netProfitUsd: number;
     roi: number;
   };
-  queues: {
-    classify: number;
-    score: number;
-    research: number;
-    reputation: number;
-  };
+  queues: Record<string, number>;
 }

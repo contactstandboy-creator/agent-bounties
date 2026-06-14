@@ -107,7 +107,7 @@ export function startScoreWorker(): Worker {
             isAiDoable: bounty.classification.isAiDoable,
             estimatedTimeMinutes: bounty.classification.estimatedTimeMinutes ?? 30,
             requiredTools: bounty.classification.requiredTools,
-            subTasks: bounty.classification.subTasks as string[] | undefined,
+            subTasks: bounty.classification.subTasks as unknown as string[] | undefined,
           },
         });
       }

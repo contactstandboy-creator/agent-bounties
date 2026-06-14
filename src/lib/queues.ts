@@ -8,13 +8,15 @@ import type {
 } from "@/types";
 
 // ─── Queue Names ──────────────────────────────────────────────
+// NOTE: BullMQ does not allow ":" in queue names (used internally as a
+// Redis key delimiter). Use "-" instead.
 
 export const QUEUE_NAMES = {
-  CLASSIFY: "bounty:classify",
-  SCORE: "bounty:score",
-  RESEARCH: "agent:research",
-  REVIEW: "submission:review",
-  REPUTATION: "reputation:update",
+  CLASSIFY: "bounty-classify",
+  SCORE: "bounty-score",
+  RESEARCH: "agent-research",
+  REVIEW: "submission-review",
+  REPUTATION: "reputation-update",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -31,7 +33,22 @@ const DEFAULT_JOB_OPTIONS = {
   removeOnFail: { count: 500, age: 60 * 60 * 24 * 7 }, // Keep failures for 7d
 };
 
-// ─── Queue Factory ────────────────────────────────────────────
+// ─── Lazy Queue Singletons ────────────────────────────────────
+//
+// IMPORTANT: Queue instances must NOT be created at module load time.
+// During `next build`, Next.js statically imports every route module to
+// collect page data. If creating a BullMQ Queue (or its Redis connection)
+// has any side effect that throws or blocks, the production build fails —
+// even though the code path is never actually executed at build time.
+//
+// To avoid this entirely, each queue is created lazily on first use via
+// these getter functions, and only ever called from inside request
+// handlers / worker processes (never from module-level code).
+
+let _classifyQueue: Queue<ClassifyJobData> | undefined;
+let _scoreQueue: Queue<ScoreJobData> | undefined;
+let _researchQueue: Queue<ResearchJobData> | undefined;
+let _reputationQueue: Queue<ReputationUpdateJobData> | undefined;
 
 function makeQueue<T>(name: string): Queue<T> {
   return new Queue<T>(name, {
@@ -40,14 +57,33 @@ function makeQueue<T>(name: string): Queue<T> {
   });
 }
 
-// ─── Queue Instances ──────────────────────────────────────────
+export function getClassifyQueue(): Queue<ClassifyJobData> {
+  if (!_classifyQueue) {
+    _classifyQueue = makeQueue<ClassifyJobData>(QUEUE_NAMES.CLASSIFY);
+  }
+  return _classifyQueue;
+}
 
-export const classifyQueue = makeQueue<ClassifyJobData>(QUEUE_NAMES.CLASSIFY);
-export const scoreQueue = makeQueue<ScoreJobData>(QUEUE_NAMES.SCORE);
-export const researchQueue = makeQueue<ResearchJobData>(QUEUE_NAMES.RESEARCH);
-export const reputationQueue = makeQueue<ReputationUpdateJobData>(
-  QUEUE_NAMES.REPUTATION
-);
+export function getScoreQueue(): Queue<ScoreJobData> {
+  if (!_scoreQueue) {
+    _scoreQueue = makeQueue<ScoreJobData>(QUEUE_NAMES.SCORE);
+  }
+  return _scoreQueue;
+}
+
+export function getResearchQueue(): Queue<ResearchJobData> {
+  if (!_researchQueue) {
+    _researchQueue = makeQueue<ResearchJobData>(QUEUE_NAMES.RESEARCH);
+  }
+  return _researchQueue;
+}
+
+export function getReputationQueue(): Queue<ReputationUpdateJobData> {
+  if (!_reputationQueue) {
+    _reputationQueue = makeQueue<ReputationUpdateJobData>(QUEUE_NAMES.REPUTATION);
+  }
+  return _reputationQueue;
+}
 
 // ─── Queue Events (for monitoring) ───────────────────────────
 
@@ -66,7 +102,7 @@ export async function enqueueClassify(
   data: ClassifyJobData,
   priority = 5
 ): Promise<string> {
-  const job = await classifyQueue.add(`classify:${data.bountyId}`, data, {
+  const job = await getClassifyQueue().add(`classify:${data.bountyId}`, data, {
     priority,
     jobId: `classify:${data.bountyId}`, // Dedup by bountyId
   });
@@ -77,7 +113,7 @@ export async function enqueueClassify(
  * Enqueue a classified bounty for opportunity scoring.
  */
 export async function enqueueScore(data: ScoreJobData): Promise<string> {
-  const job = await scoreQueue.add(`score:${data.bountyId}`, data, {
+  const job = await getScoreQueue().add(`score:${data.bountyId}`, data, {
     jobId: `score:${data.bountyId}`,
   });
   return job.id ?? "";
@@ -87,7 +123,7 @@ export async function enqueueScore(data: ScoreJobData): Promise<string> {
  * Enqueue a scored bounty for the research agent.
  */
 export async function enqueueResearch(data: ResearchJobData): Promise<string> {
-  const job = await researchQueue.add(`research:${data.bountyId}`, data, {
+  const job = await getResearchQueue().add(`research:${data.bountyId}`, data, {
     attempts: 2, // Research is expensive; fewer retries
     backoff: { type: "fixed" as const, delay: 5000 },
   });
@@ -100,7 +136,7 @@ export async function enqueueResearch(data: ResearchJobData): Promise<string> {
 export async function enqueueReputationUpdate(
   data: ReputationUpdateJobData
 ): Promise<string> {
-  const job = await reputationQueue.add(
+  const job = await getReputationQueue().add(
     `reputation:${data.submissionId}`,
     data,
     { jobId: `reputation:${data.submissionId}` }
@@ -110,19 +146,25 @@ export async function enqueueReputationUpdate(
 
 /**
  * Get queue depth stats for all queues (useful for admin dashboard).
+ * Wrapped in try/catch so a missing/unreachable Redis instance never
+ * crashes the dashboard — it just shows zeros.
  */
 export async function getQueueDepths(): Promise<Record<string, number>> {
-  const [classify, score, research, reputation] = await Promise.all([
-    classifyQueue.getWaiting(),
-    scoreQueue.getWaiting(),
-    researchQueue.getWaiting(),
-    reputationQueue.getWaiting(),
-  ]);
+  try {
+    const [classify, score, research, reputation] = await Promise.all([
+      getClassifyQueue().getWaiting(),
+      getScoreQueue().getWaiting(),
+      getResearchQueue().getWaiting(),
+      getReputationQueue().getWaiting(),
+    ]);
 
-  return {
-    classify: classify.length,
-    score: score.length,
-    research: research.length,
-    reputation: reputation.length,
-  };
+    return {
+      classify: classify.length,
+      score: score.length,
+      research: research.length,
+      reputation: reputation.length,
+    };
+  } catch {
+    return { classify: 0, score: 0, research: 0, reputation: 0 };
+  }
 }

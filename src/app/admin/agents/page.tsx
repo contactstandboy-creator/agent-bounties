@@ -46,7 +46,7 @@ export default async function AgentsPage() {
               ? rep.approved / rep.totalSubmissions
               : 0;
             const net = rep ? rep.totalEarnedUsd - rep.totalComputeCost : 0;
-            const catScores = (rep?.categoryScores ?? {}) as Record<string, CategoryScore>;
+            const catScores = (rep?.categoryScores ?? {}) as unknown as Record<string, CategoryScore>;
 
             return (
               <div key={agent.id} style={{

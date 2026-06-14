@@ -115,7 +115,7 @@ export async function recordOutcome(data: OutcomeData): Promise<void> {
   }
 
   const rep = agent.reputation;
-  const currentCategoryScores = (rep.categoryScores as Record<string, CategoryScore>) ?? {};
+  const currentCategoryScores = (rep.categoryScores as unknown as Record<string, CategoryScore>) ?? {};
 
   // Update category score
   const catKey = taskType.toLowerCase();
@@ -266,7 +266,7 @@ export async function getAgentStats(agentType: AgentType): Promise<AgentStats> {
     accuracyScore: rep.accuracyScore,
     rolling30dScore: rep.rolling30dScore,
     avgAutoScore: rep.avgAutoScore,
-    categoryScores: (rep.categoryScores as Record<string, CategoryScore>) ?? {},
+    categoryScores: (rep.categoryScores as unknown as Record<string, CategoryScore>) ?? {},
   };
 }
 
